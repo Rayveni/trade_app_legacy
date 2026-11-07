@@ -1,0 +1,51 @@
+@startuml business-flow
+title Бизнес-процесс: приём и обработка задачи (очередь Redis Streams)
+skinparam shadowing false
+skinparam backgroundColor #FFFFFF
+
+|#AntiqueWhite|Клиент|
+start
+:GET /api/tasks/<endpoint>?params;
+|#LightBlue|fast_api|
+:валидация Pydantic-модели\n(query-параметры);
+:header = {id: uuid4, type: <EndpointClass>};
+:сообщение = dict(request.query_params);
+:XADD front_topic;
+:200 OK {response: message_id};
+|#LightGreen|Redis|
+:front_topic (stream);
+|#Wheat|worker: front_queue_listener|
+:каждые 3 с (cron */3)\nXREADGROUP front_topic\nconsumer_group=worker_1, n_bulk=10;
+:BULK INSERT task_status (NEW)\n+ task_details (BEGIN..COMMIT);
+:XACK front_topic;
+:BULK XADD tasks_topic\n(пересылка сообщений);
+|#LightGreen|Redis|
+:tasks_topic (stream);
+|#Wheat|worker: tasks_queue_listener|
+:каждую 1 с (cron */1)\nXREADGROUP tasks_topic\nn_bulk=1;
+:task_status = PROGRESS\n+ message_id;
+:Jobs.task_pipline(msg)\nпо header.type;
+if (success == False?) then (да)
+  :task_status = ERROR\n+ error_message;
+else (нет)
+  if (end_flag == False?) then (да)
+    if (parent_task_id == None?) then (да)
+      :task_status = 'SPAWN SUBTASKS';
+      :master_task_id = task_id;
+    else (нет)
+    endif
+    :создание подзадач\n(НОВЫЕ task_id, XADD tasks_topic);
+  else (нет)
+    :task_status = DONE;
+  endif
+endif
+:XACK tasks_topic;
+stop
+
+legend right
+  Источники: app/backend/api/api_tasks/router.py:32-50,
+  worker/src/jobs/listeners.py:89-208, worker/src/jobs/jobs.py:64-272,
+  topics_config.json
+  Синхронная часть — запрос/ответ; асинхронная — слушатели по расписанию
+end legend
+@enduml

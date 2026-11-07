@@ -16,6 +16,7 @@
         "ReneSaarsoo.sql-formatter-vsc"
       ],
       "settings": {
+        "ruff.lineLength": 80,
         "[python]": {
           "editor.defaultFormatter": "charliermarsh.ruff"
         },

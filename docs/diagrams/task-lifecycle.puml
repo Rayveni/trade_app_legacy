@@ -1,0 +1,27 @@
+@startuml task-lifecycle
+title Жизненный цикл задачи (task_status.status)
+skinparam shadowing false
+skinparam backgroundColor #FFFFFF
+
+[*] --> NEW : фронт-слушатель\nINSERT task_status
+NEW --> PROGRESS : бэк-слушатель\nперед task_pipline
+PROGRESS --> DONE : success и end_flag=True
+PROGRESS --> ERROR : success == False
+PROGRESS --> SPAWN : end_flag == False\n(корневая задача)
+SPAWN : 'SPAWN SUBTASKS'
+SPAWN --> PROGRESS : подзадачи в очереди,\nснимается как обычная задача
+DONE --> [*]
+ERROR --> NEW : повторная публикация\n(ручная, RetryTask —\nтип без обработчика)
+
+note right of NEW
+  Значения в коде: NEW, PROGRESS,
+  DONE, ERROR, 'SPAWN SUBTASKS'
+  Источник: worker/src/jobs/listeners.py:143-207,
+  db/init_sql/init_tasks_db.sql:4
+end note
+
+legend right
+  Источники: worker/src/jobs/listeners.py:143-207,
+  db/init_sql/init_tasks_db.sql:1-9
+end legend
+@enduml

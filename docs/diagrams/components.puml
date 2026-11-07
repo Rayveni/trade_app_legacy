@@ -1,0 +1,67 @@
+@startuml components
+title Компоненты системы: fast_api и worker
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam backgroundColor #FFFFFF
+
+package "fast_api (app/Dockerfile, python:3.9.16)" {
+  package "HTTP-слой (app/backend)" {
+    [main.py\nmiddleware: CORS,\ncatch_exceptions,\nLogMiddleware] as main
+    [router_tasks\n/api/tasks] as rt
+    [router_redis\n/api/redis] as rr
+    [router_db\n/api/pg] as rdb
+    [schemas.py\nPydantic-модели] as schemas
+  }
+  package "Общие библиотеки (common_libs)" {
+    [queue_interface\n-> redis_wrapper\n(XADD/XREADGROUP)] as qi
+    [db_interface\n-> pg_wrapper\n(psycopg2)] as di
+    [utils.read_secrets] as utils
+  }
+  [Статика\nfrontend/] as fe
+}
+
+package "worker (worker/Dockerfile, python:3.14.2)" {
+  [worker.py\nсборка драйверов] as wp
+  [job_scheduler.py\nAPScheduler\nBackgroundScheduler] as sched
+  [listeners.py\nfront_queue_listener\ntasks_queue_listener] as lst
+  [jobs.py\ntask_pipline] as jobs
+  [_moex_call.py\nThreadPool\n(requests)] as moexcall
+  [finam_call.py\nSelenium + lxml] as finamcall
+  [moex_api.py\nURL-строители] as moexapi
+  [SQL-файлы\njobs/sql/] as sql
+}
+
+database "PostgreSQL" as pg
+queue "Redis Streams" as redis
+cloud "MOEX ISS\nFINAM.ru" as ext
+
+main --> rt
+main --> rr
+main --> rdb
+rt --> schemas
+rt --> qi
+rr --> qi
+rdb --> di
+rdb --> utils
+qi --> redis
+di --> pg
+wp --> sched
+sched --> lst
+lst --> qi
+lst --> di
+lst --> jobs
+jobs --> moexapi
+jobs --> moexcall
+jobs --> finamcall
+jobs --> sql
+jobs --> di
+moexcall --> ext
+finamcall --> ext
+
+legend right
+  Источники: app/backend/main.py:42-56, worker/src/worker.py:17-71,
+  worker/src/job_scheduler.py:10-59, worker/src/jobs/listeners.py:5-208,
+  worker/src/jobs/jobs.py:14-273
+  Направление стрелок — направление вызовов
+end legend
+@enduml

@@ -1,0 +1,36 @@
+@startuml deployment
+title Развёртывание: docker-compose (локальная среда)
+skinparam shadowing false
+skinparam backgroundColor #FFFFFF
+
+node "Хост (Docker Compose)" as host {
+  node "fast_api\nimage: local_image/fast_api\npython:3.9.16\nuvicorn :81 → 5001" as web {
+    artifact "app/backend"
+  }
+  node "worker\nimage: local_image/worker\npython:3.14.2\nChrome + chromedriver" as wk {
+    artifact "worker/src"
+  }
+  node "redis\nredis:8.0.6-alpine\n:6379" as rds {
+    database "Streams"
+  }
+  node "postgres\npostgres:18.3-alpine3.23\n:5432" as pgs {
+    database "tasks_db, fin_db"
+  }
+  node "pgadmin\ndpage/pgadmin4:9.12\n:5050 → 80" as pga
+  node "jupyter\nimage: local_image/jupyter\n:8888" as jup
+}
+
+web --> rds : XADD/XREADGROUP
+wk --> rds : XREADGROUP/XADD/XACK
+web --> pgs : psycopg2\n(read_secrets)
+wk --> pgs : psycopg2
+wk --> pga : нет
+jup --> pgs : (не в коде)
+
+legend right
+  Источники: docker-compose.yml, app/Dockerfile, worker/Dockerfile,
+  db/Dockerfile
+  Секреты: db_root_password, task_db_creds, fin_db_creds
+  (Docker secrets, файлы ./secrets/*.txt)
+end legend
+@enduml

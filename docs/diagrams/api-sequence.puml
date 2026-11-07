@@ -1,0 +1,42 @@
+@startuml api-sequence
+title Последовательность: GET /api/tasks/securities_history
+skinparam shadowing false
+skinparam backgroundColor #FFFFFF
+autonumber
+
+actor "Клиент" as c
+participant "fast_api\napi_tasks/router.py" as api
+participant "base_queue\nredis_steams" as mq
+participant "Redis\nfront_topic" as redis
+participant "worker\nlisteners.py" as w
+participant "PostgreSQL\ntasks_db" as db
+
+c -> api : GET /api/tasks/securities_history\nengine, market, start_date, end_date
+activate api
+api -> api : header: id=uuid4, type=SecuritiesHistory\nmessage = query_params
+api -> mq : publish(front_topic, message, header)
+mq -> redis : XADD front_topic
+redis --> mq : message_id
+mq --> api : message_id
+api --> c : 200 OK, response = message_id
+deactivate api
+
+w -> redis : front_queue_listener: XREADGROUP worker_1, count=10
+redis --> w : до 10 сообщений
+w -> db : BEGIN; INSERT task_status NEW\n+ task_details; COMMIT
+w -> redis : XACK commit
+w -> redis : BULK XADD tasks_topic
+
+w -> redis : tasks_queue_listener: XREADGROUP worker_1, count=1
+redis --> w : 1 сообщение
+w -> db : UPDATE task_status = PROGRESS
+w -> w : Jobs.task_pipline по header.type
+w -> db : UPDATE task_status = DONE или ERROR
+w -> redis : XACK
+
+legend right
+  Источники: app/backend/api/api_tasks/router.py:32-50,
+  worker/src/jobs/listeners.py:89-208, worker/src/job_scheduler.py:41-59
+  Шаги 7-12 выполняются по cron */3, шаги 13-18 — по cron */1
+end legend
+@enduml

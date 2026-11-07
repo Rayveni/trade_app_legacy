@@ -1,0 +1,77 @@
+@startuml data-model
+title Модель данных: задачи (tasks_db) и рыночные данные (fin_db)
+skinparam shadowing false
+skinparam backgroundColor #FFFFFF
+skinparam linetype ortho
+
+package "tasks_db" {
+  entity "task_status" as task_status {
+    * task_id : VARCHAR(36) PK
+    --
+    parent_task_id : VARCHAR(36)
+    * status : VARCHAR(20) DEFAULT 'NEW'
+    error_message : VARCHAR(56)
+    retry_count : int
+    sys_created : TIMESTAMP DEFAULT now()
+    sys_updated : TIMESTAMP
+  }
+  entity "task_details" as task_details {
+    * task_id : VARCHAR(36) PK
+    --
+    topic : VARCHAR(20)
+    * message_id : VARCHAR(20)
+    * message : json
+    * header : json
+    sys_created : TIMESTAMP DEFAULT now()
+    sys_updated : TIMESTAMP
+  }
+}
+
+package "fin_db" {
+  entity "securities_dict" as securities_dict {
+    * secid : VARCHAR(51) PK
+    --
+    shortname, regnumber, name,\nisin, is_traded, emitent_*,\ntype, "group", boardids,\nsys_created, sys_updated
+  }
+  entity "securities_hist" as securities_hist {
+    * boardid : VARCHAR(12)
+    * tradedate : date
+    * shortname : VARCHAR(189)
+    * secid : VARCHAR(51)
+    --
+    numtrades, value, open, low,\nhigh, ..., currencyid,\nsys_created, sys_updated
+  }
+  entity "finam_data" as finam_data {
+    * secid : VARCHAR(51) PK
+    --
+    dividends_html : bytea
+    news_html : bytea
+    error_message : text
+    * dividends_flag : bool DEFAULT false
+    sys_created, sys_updated
+  }
+  entity "finam_divs" as finam_divs {
+    secid : VARCHAR(51)
+    * dividend_record_date : date
+    * dividend_value : money
+    rate : real
+    sys_created : TIMESTAMP DEFAULT now()
+    sys_updated : TIMESTAMP
+  }
+  entity "справочники\n(securitytypes, securitygroups,\nengines, markets, boards)" as dicts {
+  }
+}
+
+task_status ||--|| task_details : task_id
+securities_dict ||--o{ securities_hist : secid
+securities_dict ||--o{ finam_data : secid
+finam_data ||--o{ finam_divs : secid
+
+legend right
+  * — обязательное поле; связи — логические (FK в коде не объявлены)
+  Индексы: idx_is_traded, task_status_idx,
+  securities_hist_mm_idx (tradedate desc, secid, boardid),
+  finam_dives_mm_idx (secid desc, dividend_record_date, dividend_value)
+  Источник: db/init_sql/init_fin_db.sql, db/init_sql/init_tasks_db.sql
+end legend
+@enduml

@@ -1,0 +1,39 @@
+@startuml context
+title Контекст системы: trade_app (сбор данных Московской биржи и FINAM)
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName SansSerif
+
+actor "Пользователь\n(браузер)" as user
+
+component "fast_api\nFastAPI, порт 81\n(app/backend/main.py)" as api
+component "worker\npython src/worker.py\n(worker/src/worker.py)" as worker
+component "Статический фронтенд\napp/frontend/index.html" as fe
+
+database "PostgreSQL 18.3\ntasks_db + fin_db\n(db/init_sql/)" as pg
+queue "Redis 8.0.6\nStreams: front_topic,\ntasks_topic\n(redis_wrapper.py)" as redis
+cloud "MOEX ISS API\niss.moex.com\n(moex_api.py)" as moex
+cloud "FINAM.ru\n(финансовые данные)\n(finam_call.py)" as finam
+component "pgAdmin 9.12\n(администрирование БД)" as pgadmin
+component "Jupyter\n(аналитика, ноутбуки)" as jupyter
+
+user --> fe : HTTP /
+user --> api : HTTP GET /api/tasks/*, /api/redis/*, /api/pg/*
+api --> redis : XADD front_topic
+worker --> redis : XREADGROUP front_topic, tasks_topic
+worker --> pg : SQL: task_status, task_details
+worker --> redis : XADD tasks_topic (пересылка)
+worker --> moex : HTTPS GET (словари, история сделок)
+worker --> pg : SQL: securities_dict, securities_hist
+worker --> finam : HTTPS + Selenium/Chrome
+worker --> pg : SQL: finam_data, finam_divs
+pgadmin --> pg : TCP 5432
+jupyter --> pg : чтение данных (не в коде)
+
+legend right
+  Источники: docker-compose.yml, app/backend/main.py, worker/src/worker.py,
+  common_libs/moex_api.py, worker/src/jobs/finam_call.py
+  Сплошные стрелки — синхронные вызовы; очередь Redis — асинхронный транспорт
+end legend
+@enduml

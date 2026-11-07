@@ -1,0 +1,37 @@
+@startuml observability
+title Наблюдаемость: источники сигналов
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam backgroundColor #FFFFFF
+
+component "fast_api" as api
+component "worker" as wk
+component "JSON-логи\n(JsonFormatter)\n→ /app/logs/fastapi_template.log\n(только fast_api)" as apilogs
+component "Консольные логи\n(StreamHandler, stdout)\nформат: asctime level\nfilename funcName:lineno" as wklogs
+component "APScheduler\nлоггер 'apscheduler'\nуровень ERROR" as apslog
+component "Статусы задач\ntask_status (PostgreSQL)\nNEW/PROGRESS/DONE/ERROR" as statusdb
+component "Health: нет\nэндпоинтов в коде" as nohealth
+component "Метрики: нет\nв коде" as nometrics
+component "Трейсинг: нет\nв коде" as notrace
+component "Docker logs\n(коллектор снаружи,\nне в коде)" as dlogs
+component "pgAdmin\n(ручной мониторинг БД)" as pga
+
+api --> apilogs
+api --> nohealth
+wk --> wklogs
+wk --> apslog
+wk --> statusdb
+wk --> nometrics
+wk --> notrace
+apilogs ..> dlogs : файл в volume logs-store
+wklogs --> dlogs : stdout контейнера
+statusdb --> pga : SQL-запросы
+
+legend right
+  Источники: app/backend/logger/logger.py, app/backend/logger/log_middleware.py,
+  worker/src/logger/legacy_logger.py, worker/src/job_scheduler.py:41,
+  worker/src/jobs/listeners.py:143-207
+  Correlate: task_id в task_status/task_details,
+  header.id = task_id, message_id — идентификатор в Redis
+end legend
+@enduml
